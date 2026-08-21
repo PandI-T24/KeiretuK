@@ -4,61 +4,124 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>タイムラインメモ帳</title>
+  
+  <!-- PWA: ホーム画面アイコンやアプリ設定 -->
+  <link rel="manifest" href='data:application/json;charset=utf-8,{"name":"タイムラインメモ","short_name":"メモ帳","start_url":"./","display":"standalone","background_color":"#ffffff","theme_color":"#007bff","icons":[{"src":"https://cdn-icons-png.flaticon.com/512/3209/3209260.png","sizes":"192x192","type":"image/png"}]}'>
+
   <style>
+    :root {
+      --bg-color: #f4f5f7; --text-color: #333; --sidebar-bg: #ffffff;
+      --border-color: #e0e0e0; --item-bg: #ffffff; --input-bg: #ffffff;
+    }
+    .dark-mode {
+      --bg-color: #121212; --text-color: #e0e0e0; --sidebar-bg: #1e1e1e;
+      --border-color: #444; --item-bg: #2c2c2c; --input-bg: #333;
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: sans-serif; background: #f4f5f7; display: flex; height: 100vh; color: #333; overflow: hidden; }
+    body { font-family: sans-serif; background: var(--bg-color); color: var(--text-color); display: flex; height: 100vh; overflow: hidden; transition: background 0.3s, color 0.3s; }
 
     /* サイドバー */
     .sidebar { 
-      width: 240px; background: #ffffff; border-right: 1px solid #e0e0e0; 
+      width: 240px; background: var(--sidebar-bg); border-right: 1px solid var(--border-color); 
       display: flex; flex-direction: column; 
       position: absolute; left: -240px; top: 0; bottom: 0; z-index: 100;
-      transition: left 0.3s ease;
+      transition: left 0.3s ease, background 0.3s;
     }
-    .sidebar.open { left: 0; box-shadow: 2px 0 10px rgba(0,0,0,0.1); }
+    .sidebar.open { left: 0; box-shadow: 2px 0 10px rgba(0,0,0,0.3); }
     
-    .sidebar-header { padding: 16px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+    .sidebar-header { padding: 16px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 8px; }
+    .sidebar-header h2 { flex: 1; font-size: 18px; }
+    .select-toggle-btn { background: none; border: none; cursor: pointer; color: var(--text-color); display: flex; padding: 4px; }
     .add-btn { background: #007bff; color: white; border: none; width: 32px; height: 32px; border-radius: 50%; font-size: 20px; cursor: pointer; }
+    
     .sheet-list { list-style: none; overflow-y: auto; flex: 1; }
-    .sheet-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; cursor: pointer; border-bottom: 1px solid #f9f9f9; }
+    .sheet-item { 
+      display: flex; align-items: center; padding: 14px 16px; cursor: pointer; border-bottom: 1px solid var(--border-color); 
+      user-select: none;
+    }
+    .sheet-item:hover { background: #f0f7ff; }
+    .dark-mode .sheet-item:hover { background: #333; }
     .sheet-item.active { background: #eef5ff; font-weight: bold; color: #007bff; }
-    .menu-btn { background: none; border: none; font-size: 16px; cursor: pointer; padding: 4px; color: #888; }
+    .dark-mode .sheet-item.active { background: #3a3a3a; color: #66b0ff; }
+    .sheet-checkbox { margin-right: 12px; display: none; }
+    .select-mode .sheet-checkbox { display: block; }
+    
+    .data-mgmt { padding: 16px; border-top: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 8px; }
+    .data-mgmt button { padding: 8px; font-size: 12px; cursor: pointer; background: #eee; border: 1px solid #ccc; border-radius: 4px; }
+    .delete-selected-btn { 
+      padding: 16px; background: #dc3545; color: white; border: none; text-align: center; cursor: pointer; font-weight: bold; display: none;
+    }
+    .select-mode .delete-selected-btn { display: block; }
+
+    /* オーバーレイ */
+    .overlay, .sidebar-overlay {
+      display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.4); z-index: 90;
+    }
+    .overlay.show, .sidebar-overlay.show { display: block; }
 
     /* メインエリア */
-    .main-content { flex: 1; padding: 16px; overflow-y: auto; position: relative; display: flex; flex-direction: column; }
+    .main-content { flex: 1; padding: 16px; overflow-y: auto; position: relative; }
     .header-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
     .hamburger-btn { background: #333; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 16px; }
+    .dark-mode .hamburger-btn { background: #555; }
+    .theme-toggle { background: none; border: none; cursor: pointer; margin-left: auto; color: var(--text-color); padding: 4px; }
 
     .add-memo-box { display: flex; gap: 8px; margin-bottom: 24px; }
-    .add-memo-box input { flex: 1; padding: 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; }
+    .add-memo-box input { flex: 1; padding: 12px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 16px; background: var(--input-bg); color: var(--text-color); }
     .add-memo-box button { padding: 12px 16px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; }
 
-    /* タイムライン */
     .timeline { position: relative; padding-left: 20px; }
-    .timeline::before { content: ''; position: absolute; left: 27px; top: 10px; bottom: 10px; width: 2px; background: #ccc; }
-    .timeline-item { position: relative; display: flex; align-items: flex-start; margin-bottom: 16px; background: white; padding: 12px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-    .checkbox { width: 20px; height: 20px; margin-right: 12px; margin-top: 2px; cursor: pointer; }
-    .memo-text { flex: 1; font-size: 16px; }
+    .timeline::before { content: ''; position: absolute; left: 27px; top: 10px; bottom: 10px; width: 2px; background: var(--border-color); }
+    .timeline-item { position: relative; display: flex; align-items: center; margin-bottom: 16px; background: var(--item-bg); padding: 14px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: transform 0.15s ease; }
+    .timeline-item.dragging { opacity: 0.85; box-shadow: 0 8px 16px rgba(0,0,0,0.3); transform: scale(1.02); }
+    .checkbox { width: 20px; height: 20px; margin-right: 12px; cursor: pointer; }
+    .memo-content { flex: 1; display: flex; align-items: center; }
+    .memo-text { font-size: 16px; word-break: break-all; }
     .memo-text.completed { text-decoration: line-through; color: #888; }
-    .delete-item-btn { margin-left: 8px; background: none; border: none; color: #ccc; cursor: pointer; }
+    .memo-star { color: #007bff; font-weight: bold; margin-left: 4px; font-size: 16px; }
+    .delete-item-btn { margin-left: 8px; background: none; border: none; color: #ccc; cursor: pointer; font-size: 16px; padding: 4px 8px; }
+
+    .bottom-sheet { position: fixed; left: 0; right: 0; bottom: -100%; background: var(--sidebar-bg); border-radius: 16px 16px 0 0; padding: 20px; z-index: 200; box-shadow: 0 -4px 20px rgba(0,0,0,0.3); transition: bottom 0.3s cubic-bezier(0.25, 1, 0.5, 1); }
+    .bottom-sheet.open { bottom: 0; }
+    .edit-input { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 16px; background: var(--input-bg); color: var(--text-color); }
+    .detail-textarea { width: 100%; height: 100px; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 15px; background: var(--input-bg); color: var(--text-color); }
+    .btn-close { background: #6c757d; color: white; border: none; padding: 10px 16px; border-radius: 6px; cursor: pointer; }
+    .btn-save { background: #007bff; color: white; border: none; padding: 10px 16px; border-radius: 6px; cursor: pointer; }
   </style>
 </head>
 <body>
 
-  <!-- サイドバー -->
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+  <div class="overlay" id="overlay" onclick="closeBottomSheet()"></div>
+
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <h2>シート</h2>
+      <button class="select-toggle-btn" onclick="toggleSelectMode()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="4 2"><rect x="3" y="3" width="18" height="18" rx="2"></rect></svg>
+      </button>
       <button class="add-btn" onclick="createSheet()">+</button>
     </div>
     <ul class="sheet-list" id="sheetList"></ul>
+    <div class="data-mgmt">
+      <button onclick="exportData()">データ書き出し (JSON)</button>
+      <input type="file" id="importInput" style="display:none" onchange="importData(event)">
+      <button onclick="document.getElementById('importInput').click()">データ読み込み</button>
+    </div>
+    <div class="delete-selected-btn" onclick="deleteSelectedSheets()">選択したシートを削除</div>
   </div>
 
-  <!-- メイン表示 -->
   <div class="main-content">
     <div class="header-bar">
       <button class="hamburger-btn" onclick="toggleSidebar()">≡</button>
       <h1 id="currentSheetTitle" style="font-size: 18px;">シートを選択</h1>
+      <button class="theme-toggle" id="themeToggle" onclick="toggleDarkMode()">
+        <svg id="themeIcon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        </svg>
+      </button>
     </div>
 
     <div class="add-memo-box">
@@ -69,102 +132,227 @@
     <div class="timeline" id="timeline"></div>
   </div>
 
+  <div class="bottom-sheet" id="bottomSheet">
+    <h3 style="margin-bottom: 10px;">メモの編集</h3>
+    <input type="text" id="editTitleInput" class="edit-input" placeholder="メモのタイトル">
+    <textarea id="detailInput" class="detail-textarea" placeholder="詳細メモ..."></textarea>
+    <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:10px;">
+      <button class="btn-close" onclick="closeBottomSheet()">閉じる</button>
+      <button class="btn-save" onclick="saveMemoDetail()">保存</button>
+    </div>
+  </div>
+
   <script>
+    // --- PWA: サービスワーカーを動的に登録 ---
+    if ('serviceWorker' in navigator) {
+      const swCode = `
+        self.addEventListener('install', (e) => {
+          e.waitUntil(caches.open('memo-v1').then((cache) => cache.addAll(['./'])));
+        });
+        self.addEventListener('fetch', (e) => {
+          e.respondWith(caches.match(e.request).then((res) => res || fetch(e.request)));
+        });
+      `;
+      const blob = new Blob([swCode], {type: 'application/javascript'});
+      navigator.serviceWorker.register(URL.createObjectURL(blob));
+    }
+
+    const sunSVG = `<circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>`;
+    const moonSVG = `<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>`;
+    
     let sheets = JSON.parse(localStorage.getItem('my_timeline_memos')) || [];
     let activeSheetId = null;
+    let isSelectMode = false;
+    let selectedSheetIds = [];
+    let editingMemoId = null;
 
-    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
-    function save() { localStorage.setItem('my_timeline_memos', JSON.stringify(sheets)); }
+    // --- データ管理 ---
+    function exportData() {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(sheets));
+      const downloadAnchorNode = document.createElement('a');
+      downloadAnchorNode.setAttribute("href", dataStr);
+      downloadAnchorNode.setAttribute("download", "timeline_memo_backup.json");
+      document.body.appendChild(downloadAnchorNode);
+      downloadAnchorNode.click();
+      downloadAnchorNode.remove();
+    }
 
-    function createSheet() {
-      const name = prompt("新しいシート名:", "新規シート");
-      if (!name) return;
-      const newSheet = { id: Date.now(), name: name, items: [] };
-      sheets.push(newSheet);
-      activeSheetId = newSheet.id;
-      save();
+    function importData(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          sheets = JSON.parse(e.target.result);
+          activeSheetId = sheets.length > 0 ? sheets[0].id : null;
+          save(); render();
+          alert("データを復元しました！");
+        } catch (err) { alert("ファイルの読み込みに失敗しました"); }
+      };
+      reader.readAsText(file);
+    }
+
+    // --- ダークモード ---
+    if (localStorage.getItem('theme') === 'dark') {
+      document.body.classList.add('dark-mode');
+      window.addEventListener('DOMContentLoaded', () => document.getElementById('themeIcon').innerHTML = moonSVG);
+    }
+    function toggleDarkMode() {
+      document.body.classList.toggle('dark-mode');
+      const isDark = document.body.classList.contains('dark-mode');
+      localStorage.setItem('theme', isDark ? 'dark' : 'light');
+      document.getElementById('themeIcon').innerHTML = isDark ? moonSVG : sunSVG;
+    }
+
+    // --- 選択モード ---
+    function toggleSelectMode() {
+      isSelectMode = !isSelectMode;
+      selectedSheetIds = [];
+      document.getElementById('sidebar').classList.toggle('select-mode', isSelectMode);
       render();
-      if(window.innerWidth < 600) toggleSidebar();
+    }
+
+    function toggleSheetSelection(id) {
+      if (selectedSheetIds.includes(id)) selectedSheetIds = selectedSheetIds.filter(s => s !== id);
+      else selectedSheetIds.push(id);
+    }
+
+    function deleteSelectedSheets() {
+      if (selectedSheetIds.length === 0) return;
+      if (!confirm(`${selectedSheetIds.length}個のシートを削除しますか？`)) return;
+      sheets = sheets.filter(s => !selectedSheetIds.includes(s.id));
+      if (!sheets.find(s => s.id === activeSheetId)) activeSheetId = sheets.length > 0 ? sheets[0].id : null;
+      selectedSheetIds = [];
+      toggleSelectMode();
+      save(); render();
+    }
+
+    // --- 基本機能 ---
+    function save() { localStorage.setItem('my_timeline_memos', JSON.stringify(sheets)); }
+    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebarOverlay').classList.toggle('show'); }
+    function closeSidebar() { document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebarOverlay').classList.remove('show'); }
+
+    function renameSheet(id) {
+      const sheet = sheets.find(s => s.id === id);
+      const newName = prompt("シート名を変更:", sheet.name);
+      if (newName && newName.trim() !== '') {
+        sheet.name = newName;
+        save(); render();
+      }
     }
 
     function render() {
       if (!activeSheetId && sheets.length > 0) activeSheetId = sheets[0].id;
-      
       const list = document.getElementById('sheetList');
       list.innerHTML = '';
       sheets.forEach(sheet => {
         const li = document.createElement('li');
         li.className = `sheet-item ${sheet.id === activeSheetId ? 'active' : ''}`;
         li.innerHTML = `
-          <span onclick="selectSheet(${sheet.id})">${sheet.name}</span>
-          <button class="menu-btn" onclick="deleteSheet(${sheet.id})">✕</button>
+          <input type="checkbox" class="sheet-checkbox" onchange="toggleSheetSelection(${sheet.id})" ${selectedSheetIds.includes(sheet.id) ? 'checked' : ''}>
+          <span>${sheet.name}</span>
         `;
+        
+        let pressTimer;
+        const startPress = () => { if(!isSelectMode) pressTimer = setTimeout(() => renameSheet(sheet.id), 600); };
+        const endPress = () => clearTimeout(pressTimer);
+        
+        li.addEventListener('mousedown', startPress);
+        li.addEventListener('mouseup', endPress);
+        li.addEventListener('mouseleave', endPress);
+        li.addEventListener('touchstart', startPress);
+        li.addEventListener('touchend', endPress);
+
+        li.onclick = () => { if(!isSelectMode) selectSheet(sheet.id); };
         list.appendChild(li);
       });
       renderMemos();
     }
 
-    function selectSheet(id) {
-      activeSheetId = id;
-      render();
-      if(window.innerWidth < 600) toggleSidebar();
+    function selectSheet(id) { activeSheetId = id; closeSidebar(); render(); }
+    function createSheet() {
+      const name = prompt("新しいシート名:");
+      if (!name) return;
+      const newSheet = { id: Date.now(), name: name, items: [] };
+      sheets.push(newSheet); activeSheetId = newSheet.id;
+      save(); render();
     }
 
-    function deleteSheet(id) {
-      if(!confirm("削除しますか？")) return;
-      sheets = sheets.filter(s => s.id !== id);
-      if (activeSheetId === id) activeSheetId = sheets.length > 0 ? sheets[0].id : null;
-      save();
-      render();
-    }
-
+    // --- メモ操作 ---
     function addMemo() {
       if (!activeSheetId) return alert("シートを選択してください");
       const input = document.getElementById('memoInput');
       if (!input.value.trim()) return;
-      const sheet = sheets.find(s => s.id === activeSheetId);
-      // ★ 修正箇所：unshift から push に変更して末尾に追加
-      sheet.items.push({ id: Date.now(), text: input.value, completed: false });
-      input.value = '';
-      save();
-      renderMemos();
+      sheets.find(s => s.id === activeSheetId).items.push({ id: Date.now(), text: input.value, detail: '', completed: false });
+      input.value = ''; save(); renderMemos();
     }
 
     function renderMemos() {
       const timeline = document.getElementById('timeline');
-      const title = document.getElementById('currentSheetTitle');
       timeline.innerHTML = '';
       const sheet = sheets.find(s => s.id === activeSheetId);
-      if (!sheet) return title.textContent = "シート未選択";
-
-      title.textContent = sheet.name;
-      // 修正後：itemsはpush順（古い順）に入っているのでそのままループ
+      if (!sheet) { document.getElementById('currentSheetTitle').textContent = 'シートを選択'; return; }
+      document.getElementById('currentSheetTitle').textContent = sheet.name;
       sheet.items.forEach(item => {
         const div = document.createElement('div');
         div.className = 'timeline-item';
+        div.dataset.id = item.id;
         div.innerHTML = `
           <input type="checkbox" class="checkbox" ${item.completed ? 'checked' : ''} onchange="toggleCheck(${item.id})">
-          <div class="memo-text ${item.completed ? 'completed' : ''}">${item.text}</div>
-          <button class="delete-item-btn" onclick="deleteMemo(${item.id})">✕</button>
+          <div class="memo-content" onclick="openBottomSheet(${item.id})">
+            <span class="memo-text ${item.completed ? 'completed' : ''}">${item.text}</span>
+            ${(item.detail && item.detail.trim() !== '') ? `<span class="memo-star">＊</span>` : ''}
+          </div>
+          <button class="delete-item-btn" onclick="event.stopPropagation(); deleteMemo(${item.id})">✕</button>
         `;
+        addMemoDragEvent(div, item.id);
         timeline.appendChild(div);
       });
     }
 
-    function toggleCheck(id) {
-      const sheet = sheets.find(s => s.id === activeSheetId);
-      const item = sheet.items.find(i => i.id === id);
-      item.completed = !item.completed;
-      save();
-      renderMemos();
+    function openBottomSheet(id) {
+      editingMemoId = id;
+      const item = sheets.find(s => s.id === activeSheetId).items.find(i => i.id === id);
+      document.getElementById('editTitleInput').value = item.text;
+      document.getElementById('detailInput').value = item.detail || '';
+      document.getElementById('bottomSheet').classList.add('open');
+      document.getElementById('overlay').classList.add('show');
     }
+    function closeBottomSheet() { document.getElementById('bottomSheet').classList.remove('open'); document.getElementById('overlay').classList.remove('show'); }
+    function saveMemoDetail() {
+      const sheet = sheets.find(s => s.id === activeSheetId);
+      const item = sheet.items.find(i => i.id === editingMemoId);
+      item.text = document.getElementById('editTitleInput').value;
+      item.detail = document.getElementById('detailInput').value;
+      save(); renderMemos(); closeBottomSheet();
+    }
+    
+    function addMemoDragEvent(element, itemId) {
+        let isDragging = false;
+        const start = (e) => { if (e.target.classList.contains('checkbox') || e.target.classList.contains('delete-item-btn')) return; setTimeout(() => { isDragging = true; element.classList.add('dragging'); if (navigator.vibrate) navigator.vibrate(40); }, 300); };
+        const move = (e) => { if (!isDragging) return; e.preventDefault(); const timeline = document.getElementById('timeline'); const afterElement = getDragAfterElement(timeline, (e.touches ? e.touches[0].clientY : e.clientY)); if (afterElement == null) timeline.appendChild(element); else timeline.insertBefore(element, afterElement); };
+        const end = () => { if(isDragging) { isDragging = false; element.classList.remove('dragging'); updateMemoOrder(); } };
+        element.addEventListener('touchstart', start, { passive: false });
+        element.addEventListener('touchmove', move, { passive: false });
+        element.addEventListener('touchend', end);
+        element.addEventListener('mousedown', start);
+        element.addEventListener('mousemove', move);
+        element.addEventListener('mouseup', end);
+    }
+    function getDragAfterElement(container, y) { return [...container.querySelectorAll('.timeline-item:not(.dragging)')].reduce((closest, child) => { const box = child.getBoundingClientRect(); const offset = y - box.top - box.height / 2; return (offset < 0 && offset > closest.offset) ? { offset: offset, element: child } : closest; }, { offset: Number.NEGATIVE_INFINITY }).element; }
+    function updateMemoOrder() { const sheet = sheets.find(s => s.id === activeSheetId); const newItems = []; document.querySelectorAll('.timeline-item').forEach(el => newItems.push(sheet.items.find(i => i.id === Number(el.dataset.id)))); sheet.items = newItems; save(); }
+    function toggleCheck(id) { sheets.find(s => s.id === activeSheetId).items.find(i => i.id === id).completed ^= true; save(); renderMemos(); }
+    function deleteMemo(id) { sheets.find(s => s.id === activeSheetId).items = sheets.find(s => s.id === activeSheetId).items.filter(i => i.id !== id); save(); renderMemos(); }
 
-    function deleteMemo(id) {
-      const sheet = sheets.find(s => s.id === activeSheetId);
-      sheet.items = sheet.items.filter(i => i.id !== id);
-      save();
-      renderMemos();
-    }
+    let touchStartX = 0, touchStartY = 0;
+    window.addEventListener('touchstart', (e) => { touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY; }, { passive: true });
+    window.addEventListener('touchend', (e) => {
+      const diffX = e.changedTouches[0].clientX - touchStartX;
+      const diffY = e.changedTouches[0].clientY - touchStartY;
+      if (Math.abs(diffY) > 80) return;
+      if (diffX > 70) { document.getElementById('sidebar').classList.add('open'); document.getElementById('sidebarOverlay').classList.add('show'); } 
+      else if (diffX < -70 && document.getElementById('sidebar').classList.contains('open')) closeSidebar();
+    }, { passive: true });
 
     render();
   </script>
