@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>タイムラインメモ帳</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: sans-serif; background: #f4f5f7; display: flex; height: 100vh; color: #333; overflow: hidden; }
+
+    /* サイドバー */
+    .sidebar { 
+      width: 240px; background: #ffffff; border-right: 1px solid #e0e0e0; 
+      display: flex; flex-direction: column; 
+      position: absolute; left: -240px; top: 0; bottom: 0; z-index: 100;
+      transition: left 0.3s ease;
+    }
+    .sidebar.open { left: 0; box-shadow: 2px 0 10px rgba(0,0,0,0.1); }
+    
+    .sidebar-header { padding: 16px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+    .add-btn { background: #007bff; color: white; border: none; width: 32px; height: 32px; border-radius: 50%; font-size: 20px; cursor: pointer; }
+    .sheet-list { list-style: none; overflow-y: auto; flex: 1; }
+    .sheet-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; cursor: pointer; border-bottom: 1px solid #f9f9f9; }
+    .sheet-item.active { background: #eef5ff; font-weight: bold; color: #007bff; }
+    .menu-btn { background: none; border: none; font-size: 16px; cursor: pointer; padding: 4px; color: #888; }
+
+    /* メインエリア */
+    .main-content { flex: 1; padding: 16px; overflow-y: auto; position: relative; display: flex; flex-direction: column; }
+    .header-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+    .hamburger-btn { background: #333; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 16px; }
+
+    .add-memo-box { display: flex; gap: 8px; margin-bottom: 24px; }
+    .add-memo-box input { flex: 1; padding: 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; }
+    .add-memo-box button { padding: 12px 16px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; }
+
+    /* タイムライン */
+    .timeline { position: relative; padding-left: 20px; }
+    .timeline::before { content: ''; position: absolute; left: 27px; top: 10px; bottom: 10px; width: 2px; background: #ccc; }
+    .timeline-item { position: relative; display: flex; align-items: flex-start; margin-bottom: 16px; background: white; padding: 12px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .checkbox { width: 20px; height: 20px; margin-right: 12px; margin-top: 2px; cursor: pointer; }
+    .memo-text { flex: 1; font-size: 16px; }
+    .memo-text.completed { text-decoration: line-through; color: #888; }
+    .delete-item-btn { margin-left: 8px; background: none; border: none; color: #ccc; cursor: pointer; }
+  </style>
+</head>
+<body>
+
+  <!-- サイドバー -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <h2>シート</h2>
+      <button class="add-btn" onclick="createSheet()">+</button>
+    </div>
+    <ul class="sheet-list" id="sheetList"></ul>
+  </div>
+
+  <!-- メイン表示 -->
+  <div class="main-content">
+    <div class="header-bar">
+      <button class="hamburger-btn" onclick="toggleSidebar()">≡</button>
+      <h1 id="currentSheetTitle" style="font-size: 18px;">シートを選択</h1>
+    </div>
+
+    <div class="add-memo-box">
+      <input type="text" id="memoInput" placeholder="メモを入力..." onkeydown="if(event.key==='Enter') addMemo()">
+      <button onclick="addMemo()">追加</button>
+    </div>
+
+    <div class="timeline" id="timeline"></div>
+  </div>
+
+  <script>
+    let sheets = JSON.parse(localStorage.getItem('my_timeline_memos')) || [];
+    let activeSheetId = null;
+
+    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
+    function save() { localStorage.setItem('my_timeline_memos', JSON.stringify(sheets)); }
+
+    function createSheet() {
+      const name = prompt("新しいシート名:", "新規シート");
+      if (!name) return;
+      const newSheet = { id: Date.now(), name: name, items: [] };
+      sheets.push(newSheet);
+      activeSheetId = newSheet.id;
+      save();
+      render();
+      if(window.innerWidth < 600) toggleSidebar();
+    }
+
+    function render() {
+      if (!activeSheetId && sheets.length > 0) activeSheetId = sheets[0].id;
+      
+      const list = document.getElementById('sheetList');
+      list.innerHTML = '';
+      sheets.forEach(sheet => {
+        const li = document.createElement('li');
+        li.className = `sheet-item ${sheet.id === activeSheetId ? 'active' : ''}`;
+        li.innerHTML = `
+          <span onclick="selectSheet(${sheet.id})">${sheet.name}</span>
+          <button class="menu-btn" onclick="deleteSheet(${sheet.id})">✕</button>
+        `;
+        list.appendChild(li);
+      });
+      renderMemos();
+    }
+
+    function selectSheet(id) {
+      activeSheetId = id;
+      render();
+      if(window.innerWidth < 600) toggleSidebar();
+    }
+
+    function deleteSheet(id) {
+      if(!confirm("削除しますか？")) return;
+      sheets = sheets.filter(s => s.id !== id);
+      if (activeSheetId === id) activeSheetId = sheets.length > 0 ? sheets[0].id : null;
+      save();
+      render();
+    }
+
+    function addMemo() {
+      if (!activeSheetId) return alert("シートを選択してください");
+      const input = document.getElementById('memoInput');
+      if (!input.value.trim()) return;
+      const sheet = sheets.find(s => s.id === activeSheetId);
+      // ★ 修正箇所：unshift から push に変更して末尾に追加
+      sheet.items.push({ id: Date.now(), text: input.value, completed: false });
+      input.value = '';
+      save();
+      renderMemos();
+    }
+
+    function renderMemos() {
+      const timeline = document.getElementById('timeline');
+      const title = document.getElementById('currentSheetTitle');
+      timeline.innerHTML = '';
+      const sheet = sheets.find(s => s.id === activeSheetId);
+      if (!sheet) return title.textContent = "シート未選択";
+
+      title.textContent = sheet.name;
+      // 修正後：itemsはpush順（古い順）に入っているのでそのままループ
+      sheet.items.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'timeline-item';
+        div.innerHTML = `
+          <input type="checkbox" class="checkbox" ${item.completed ? 'checked' : ''} onchange="toggleCheck(${item.id})">
+          <div class="memo-text ${item.completed ? 'completed' : ''}">${item.text}</div>
+          <button class="delete-item-btn" onclick="deleteMemo(${item.id})">✕</button>
+        `;
+        timeline.appendChild(div);
+      });
+    }
+
+    function toggleCheck(id) {
+      const sheet = sheets.find(s => s.id === activeSheetId);
+      const item = sheet.items.find(i => i.id === id);
+      item.completed = !item.completed;
+      save();
+      renderMemos();
+    }
+
+    function deleteMemo(id) {
+      const sheet = sheets.find(s => s.id === activeSheetId);
+      sheet.items = sheet.items.filter(i => i.id !== id);
+      save();
+      renderMemos();
+    }
+
+    render();
+  </script>
+</body>
+</html>
